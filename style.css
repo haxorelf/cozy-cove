@@ -1,0 +1,901 @@
+  @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Luckiest+Guy&display=swap');
+
+  :root {
+    --ui-bg:  rgba(255,255,255,0.90);
+    --text:   #2c3e50;
+    --green:  #5cb85c;
+    --red:    #e05c5c;
+    --accent: #ff8c42;
+    --coin:   #f5c842;
+    --water:  #4a9bbe;
+    --deep:   #2d6e8a;
+    /* Set by JS on load/resize — fallback covers two-row mobile bar */
+    --mobile-bar-height: 96px;
+    /* Vertical space reserved for the CAST button and its bottom offset */
+    --cast-button-space: 130px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Nunito', sans-serif;
+    display: flex; flex-direction: column; align-items: center; align-items: center;
+    min-height: 100svh; overflow-y: auto; overflow-x: hidden; user-select: none;
+    background: linear-gradient(to bottom, #b8e4f5 0%, #7ec8d8 45%, #4a9bbe 100%); /* letterbox fill: sky → water */
+  }
+
+  #game-wrapper {
+    position: relative;
+    width: 800px; max-width: 100vw;
+    height: 100vh;     /* base: old browsers */
+    height: 100svh;    /* small viewport: never includes browser bar */
+    height: 100dvh;    /* dynamic: shrinks when bar is hidden (best) */
+    display: flex; flex-direction: column;
+    background: linear-gradient(to bottom, #b8e4f5 0%, #7ec8d8 45%, #4a9bbe 100%); /* letterbox fill: sky → water */
+  }
+
+  #gameCanvas    {
+    display:block; cursor:pointer;
+    /* Lock the canvas to its internal 800×520 ratio.
+       width:100% + aspect-ratio fills available width first,
+       then height follows. max-height prevents overflow.    */
+    width:  100%;
+    height: auto;
+    aspect-ratio: 800 / 520;
+    max-height: 100%;
+    flex-shrink: 1;
+    align-self: center;
+  }
+  /* ── Desktop: scenic fit — fill height, no forced crop ── */
+  @media (min-width: 768px) {
+    #game-wrapper {
+      overflow: hidden;
+      align-items: center;
+      justify-content: center;
+    }
+    #gameCanvas {
+      width: auto;
+      height: 100%;
+      max-height: 100%;
+      max-width: 100%;
+      min-width: unset;
+      align-self: center;
+    }
+  }
+
+  #particleCv    { position:absolute; inset:0; pointer-events:none; width:100%; height:100%; }
+  #screen-pulse  { position:absolute; inset:0; pointer-events:none; opacity:0; border:7px solid rgba(255,140,66,.65); transition:opacity .12s; }
+  #screen-pulse.flash { opacity:1; }
+
+  /* ── HUD ── */
+  #hud {
+    position:absolute; top:12px; left:12px;
+    display:flex; flex-direction:column; gap:4px;
+    pointer-events:none;
+  }
+  .hud-box {
+    background: rgba(255,255,255,0.55);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border-radius:14px; padding:8px 14px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.12);
+    pointer-events:all;
+    width:fit-content;
+  }
+  /* Coins/stats: bare floating text — no background, no capsule */
+  #coins-display {
+    font-size:23px; font-weight:800; color:var(--text);
+    display:flex; align-items:center;
+    background: none; backdrop-filter: none; -webkit-backdrop-filter: none;
+    border-radius: 0; padding: 0;
+    box-shadow: none;
+    text-shadow: 0 1px 4px rgba(255,255,255,0.7), 0 1px 3px rgba(0,0,0,0.18);
+  }
+  #stats-display {
+    font-size:12px; font-weight:700; color:var(--text);
+    display:none; gap:10px; align-items:center;
+    background: none; backdrop-filter: none; -webkit-backdrop-filter: none;
+    border-radius: 0; padding: 0;
+    box-shadow: none; pointer-events:all;
+  }
+  #stats-display.has-stats { display:flex; }
+  #stats-display span { white-space:nowrap; }
+  .stat-luck     { color:#9b59b6; }
+  .stat-control  { color:#2980b9; }
+  .stat-strength { color:#e67e22; }
+  #bait-display  {
+    font-size:13px; font-weight:800; color:var(--text);
+    background: none; backdrop-filter: none; -webkit-backdrop-filter: none;
+    border-radius: 0; padding: 0;
+    box-shadow: none; pointer-events:all;
+  }
+
+  /* ── BUTTONS ── */
+  .btn {
+    font-family:'Nunito',sans-serif; font-weight:800; border:none;
+    border-radius:12px; padding:10px 22px; font-size:15px; cursor:pointer;
+    transition:transform .1s,box-shadow .1s; box-shadow:0 4px 0 rgba(0,0,0,.2);
+  }
+  .btn:active { transform:translateY(2px); box-shadow:0 2px 0 rgba(0,0,0,.2); }
+  .btn-green  { background:var(--green);  color:#fff; }
+  .btn-blue   { background:var(--water);  color:#fff; }
+  .btn-orange { background:var(--accent); color:#fff; }
+  .btn-coin   { background:var(--coin);   color:#7a5c00; }
+  .btn-purple { background:#9b59b6;       color:#fff; }
+  .btn-sm     { padding:6px 14px; font-size:13px; }
+
+  /* ── PANELS ── */
+  .panel {
+    position:absolute; background:var(--ui-bg); border-radius:20px;
+    padding:18px 20px; box-shadow:0 6px 24px rgba(0,0,0,.18); display:none;
+  }
+  .panel.active { display:block; }
+  .panel h2 {
+    font-family:'Luckiest Guy',cursive; font-size:20px; color:var(--text);
+    margin-bottom:10px; letter-spacing:1px;
+  }
+
+  /* ── CAST / REEL BUTTONS ── */
+  #cast-btn {
+    position:absolute; bottom:38px; left:50%; transform:translateX(-50%);
+    font-size:18px; padding:14px 40px; border-radius:50px;
+    font-family:'Luckiest Guy',cursive; letter-spacing:2px;
+  }
+  #reel-btn {
+    position:absolute; bottom:38px; left:50%; transform:translateX(-50%);
+    display:none; font-size:17px; padding:13px 36px; border-radius:50px;
+    font-family:'Luckiest Guy',cursive; letter-spacing:1px;
+  }
+
+  /* ── POWER ── */
+  #power-wrap {
+    position:absolute; bottom:90px; left:50%; transform:translateX(-50%);
+    width:200px; text-align:center; display:none;
+  }
+  #power-wrap label { font-weight:700; font-size:13px; color:var(--text); }
+  #power-bar-bg { width:100%; height:16px; background:rgba(0,0,0,.15); border-radius:8px; margin-top:4px; overflow:hidden; }
+  #power-bar { height:100%; width:0%; background:linear-gradient(90deg,#5cb85c,#f5c842,#e05c5c); border-radius:8px; transition:width .05s; }
+
+  /* ── REEL PANEL ── */
+  #reel-panel {
+    position:absolute; bottom:80px; left:50%; transform:translateX(-50%);
+    width:340px; text-align:center; display:none;
+  }
+  #reel-panel label { font-weight:800; font-size:14px; color:var(--text); }
+  #tension-bg {
+    width:100%; height:22px; background:rgba(0,0,0,.1); border-radius:11px;
+    margin:6px 0; position:relative; overflow:hidden; transition:box-shadow .2s;
+  }
+  #tension-bg.glow-good { box-shadow:0 0 14px 4px rgba(92,184,92,.55); }
+  #tension-bg.danger-shake {
+    box-shadow:0 0 14px 4px rgba(224,92,92,.7);
+    animation: dangerPulse 0.25s ease-in-out infinite alternate;
+  }
+  @keyframes dangerPulse {
+    from { transform: translateX(-1px); }
+    to   { transform: translateX(1px); }
+  }
+  #safe-zone {
+    position:absolute; top:0; bottom:0; left:20%; width:45%;
+    background:rgba(92,184,92,.13);
+    border-left:2px solid rgba(92,184,92,.45);
+    border-right:2px solid rgba(92,184,92,.45);
+    pointer-events:none;
+  }
+  #tension-fill { height:100%; width:50%; background:var(--green); border-radius:11px; transition:width .08s,background .2s; }
+  #reel-hint { font-size:13px; color:#666; margin-top:4px; }
+  #fish-caught-name { font-weight:800; font-size:15px; color:var(--deep); }
+
+  /* ── STATUS ── */
+  #status-msg {
+    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+    background:rgba(255,255,255,.95); border-radius:16px; padding:14px 26px;
+    font-size:18px; font-weight:800; color:var(--text); text-align:center;
+    box-shadow:0 4px 20px rgba(0,0,0,.2); pointer-events:none;
+    opacity:0; transition:opacity .4s;
+  }
+  #status-msg.show { opacity:1; }
+
+  /* ── BITE ALERT ── */
+  #bite-alert {
+    position:absolute; top:36%; left:50%;
+    transform:translate(-50%,-50%) scale(.7);
+    font-size:30px; font-weight:800; font-family:'Luckiest Guy',cursive; color:#fff;
+    background:linear-gradient(135deg,#ff8c42,#e05c5c);
+    padding:11px 26px; border-radius:50px;
+    box-shadow:0 4px 20px rgba(255,100,50,.5); letter-spacing:2px;
+    opacity:0; pointer-events:none; transition:opacity .15s,transform .2s cubic-bezier(.34,1.56,.64,1);
+  }
+  #bite-alert.show { opacity:1; transform:translate(-50%,-50%) scale(1); }
+
+  /* ── DISCOVERY BANNER ── */
+  #discovery-banner {
+    position:absolute; top:28%; left:50%;
+    transform:translate(-50%,-50%) scale(.8);
+    background:linear-gradient(135deg,#9b59b6,#6c3483);
+    color:#fff; font-family:'Luckiest Guy',cursive;
+    font-size:18px; letter-spacing:1px;
+    padding:12px 24px; border-radius:50px;
+    box-shadow:0 4px 20px rgba(155,89,182,.5);
+    opacity:0; pointer-events:none;
+    transition:opacity .2s, transform .25s cubic-bezier(.34,1.56,.64,1);
+    text-align:center; white-space:nowrap;
+  }
+  #discovery-banner.show { opacity:1; transform:translate(-50%,-50%) scale(1); }
+
+  /* ── TOP BUTTONS ── */
+  #top-btns {
+    position:absolute; top:12px; right:12px;
+    display:flex; gap:6px; pointer-events:all;
+  }
+  #top-btns .btn { padding:8px 12px; font-size:12px; }
+
+  /* ── CATCH POPUP ── */
+  #catch-popup {
+    top:50%; left:50%; transform:translate(-50%,-50%) scale(.8);
+    width:300px; text-align:center;
+    transition:transform .25s cubic-bezier(.34,1.56,.64,1),opacity .25s; opacity:0;
+  }
+  #catch-popup.active { transform:translate(-50%,-50%) scale(1); opacity:1; }
+  #catch-popup .fish-emoji { font-size:62px; display:block; margin:6px 0; }
+  #catch-popup .fish-name  { font-family:'Luckiest Guy',cursive; font-size:24px; color:var(--deep); }
+  #catch-popup .fish-sub   { font-size:13px; color:#777; margin:4px 0 8px; }
+  #catch-popup .fish-worth { font-size:16px; font-weight:800; color:#d4a017; margin-bottom:14px; }
+  #catch-popup .btn-row    { display:flex; gap:10px; }
+  #catch-popup .btn-row .btn { flex:1; }
+  #shiny-badge {
+    display:none; background:#f5c842; color:#7a5c00;
+    font-weight:800; font-size:12px; border-radius:20px;
+    padding:3px 10px; margin:0 auto 6px; width:fit-content;
+  }
+  #new-badge {
+    display:none; background:#9b59b6; color:#fff;
+    font-weight:800; font-size:12px; border-radius:20px;
+    padding:3px 10px; margin:0 auto 6px; width:fit-content;
+  }
+
+  /* ── INVENTORY ── */
+  #inv-panel { top:60px; right:12px; width:250px; max-height:75vh; overflow-y:auto; }
+  #inv-tabs  { display:flex; gap:6px; margin-bottom:10px; }
+  #inv-tabs .tab {
+    flex:1; padding:5px 0; font-size:12px; font-weight:800; border:none;
+    border-radius:8px; cursor:pointer; background:rgba(0,0,0,.07); color:var(--text);
+    font-family:'Nunito',sans-serif;
+  }
+  #inv-tabs .tab.active { background:var(--water); color:#fff; }
+  #inv-list  { list-style:none; }
+  #inv-list li {
+    padding:6px 0; border-bottom:1px solid rgba(0,0,0,.07); font-size:13px;
+  }
+  #inv-list li:last-child { border-bottom:none; }
+  .fish-row { display:flex; justify-content:space-between; align-items:center; gap:4px; }
+  .fish-label { font-weight:700; flex:1; }
+  .fish-meta  { font-size:11px; color:#888; }
+  .fish-val   { color:#d4a017; font-size:12px; font-weight:700; white-space:nowrap; }
+  .fish-actions { display:flex; gap:4px; margin-top:4px; }
+  .fish-actions button {
+    font-family:'Nunito',sans-serif; font-weight:800; border:none; border-radius:8px;
+    padding:3px 8px; font-size:11px; cursor:pointer; box-shadow:0 2px 0 rgba(0,0,0,.15);
+  }
+  .btn-sell-one { background:#f5c842; color:#7a5c00; }
+  .btn-move     { background:#5cb85c; color:#fff; }
+  .btn-move-back{ background:#4a9bbe; color:#fff; }
+  #inv-total    { margin-top:8px; font-weight:700; font-size:12px; color:#555; }
+  #inv-footer   { display:flex; gap:6px; margin-top:10px; }
+  #inv-footer .btn { flex:1; padding:7px 0; font-size:12px; }
+
+  /* ── JOURNAL ── */
+  #journal-panel { top:60px; left:12px; width:260px; max-height:75vh; overflow-y:auto; }
+  #journal-list  { list-style:none; }
+  #journal-list li {
+    padding:8px 4px; border-bottom:1px solid rgba(0,0,0,.07);
+  }
+  #journal-list li:last-child { border-bottom:none; }
+  .jrnl-row { display:flex; align-items:center; gap:10px; }
+  .jrnl-img { width:52px; height:30px; object-fit:contain; flex-shrink:0; opacity:0.9; }
+  .jrnl-img.undiscovered { filter:brightness(0); opacity:0.18; }
+  .jrnl-info { flex:1; }
+  .jrnl-name { font-size:13px; font-weight:800; color:var(--text); }
+  .jrnl-record { font-size:11px; color:#888; margin-top:1px; }
+  .jrnl-badge  { font-size:10px; font-weight:800; background:#9b59b6; color:#fff; border-radius:10px; padding:1px 7px; margin-left:4px; }
+  .jrnl-pb     { font-size:10px; font-weight:800; background:#f5c842; color:#7a5c00; border-radius:10px; padding:1px 7px; margin-left:2px; }
+
+  /* ── SHOP ── */
+  #shop-panel { top:60px; left:12px; width:250px; max-height:75vh; overflow-y:auto; }
+  .shop-section { margin-bottom:14px; }
+  .shop-section h3 {
+    font-family:'Luckiest Guy',cursive; font-size:14px; color:#666;
+    letter-spacing:1px; margin-bottom:8px; border-bottom:1px solid rgba(0,0,0,.08); padding-bottom:4px;
+  }
+  .upgrade-item, .cosmetic-item {
+    background:rgba(74,155,190,.08); border-radius:10px;
+    padding:9px 11px; margin-bottom:8px;
+  }
+  .upgrade-item h4, .cosmetic-item h4 { font-size:13px; font-weight:800; color:var(--text); }
+  .upgrade-item p,  .cosmetic-item p  { font-size:11px; color:#666; margin:2px 0 6px; }
+  .cost-line { font-size:11px; font-weight:700; color:#d4a017; }
+  .upg-btn   { width:100%; padding:6px; font-size:12px; margin-top:5px; }
+  .owned-badge { font-size:11px; color:#5cb85c; font-weight:800; margin-top:4px; display:block; }
+
+  /* ── GOALS PANEL ── */
+  #goals-panel { top:60px; left:12px; width:260px; max-height:75vh; overflow-y:auto; }
+  .goal-item {
+    display:flex; align-items:center; gap:10px;
+    padding:8px 0; border-bottom:1px solid rgba(0,0,0,.07);
+  }
+  .goal-item:last-child { border-bottom:none; }
+  .goal-check { font-size:18px; flex-shrink:0; width:22px; text-align:center; }
+  .goal-info  { flex:1; }
+  .goal-label { font-size:13px; font-weight:800; color:var(--text); }
+  .goal-desc  { font-size:11px; color:#888; }
+  .goal-reward{ font-size:11px; font-weight:700; color:#d4a017; }
+  .goal-item.done .goal-label { color:#5cb85c; }
+  .goal-item.done .goal-desc  { text-decoration:line-through; opacity:.5; }
+  #goals-summary { font-size:12px; font-weight:700; color:#888; margin-bottom:10px; }
+
+  /* ── GOAL TOAST ── */
+  #goal-toast {
+    position:absolute; bottom:110px; left:50%;
+    transform:translateX(-50%);
+    background:linear-gradient(135deg,#f5c842,#f39c12);
+    color:#7a5c00; font-family:'Luckiest Guy',cursive;
+    font-size:15px; padding:10px 22px; border-radius:50px;
+    box-shadow:0 4px 16px rgba(243,156,18,.4);
+    pointer-events:none; opacity:0;
+    transition:opacity .3s;
+    white-space:nowrap; letter-spacing:1px;
+    text-align:center;
+  }
+  #goal-toast.show { opacity:1; }
+  #bigcatch-banner {
+    position:absolute; top:44%; left:50%;
+    transform:translate(-50%,-50%) scale(.8);
+    background:linear-gradient(135deg,#f5c842,#f39c12);
+    color:#7a5c00; font-family:'Luckiest Guy',cursive;
+    font-size:20px; letter-spacing:1px;
+    padding:11px 26px; border-radius:50px;
+    box-shadow:0 4px 20px rgba(243,156,18,.5);
+    opacity:0; pointer-events:none;
+    transition:opacity .2s, transform .25s cubic-bezier(.34,1.56,.64,1);
+    text-align:center; white-space:nowrap;
+  }
+  #bigcatch-banner.show { opacity:1; transform:translate(-50%,-50%) scale(1); }
+
+  /* ── CONFIRM DIALOG ── */
+  #confirm-overlay {
+    position:absolute; inset:0;
+    background:rgba(0,0,0,0.45);
+    display:none; align-items:center; justify-content:center;
+    z-index:999;
+  }
+  #confirm-overlay.show { display:flex; }
+  #confirm-box {
+    background:#fff; border-radius:20px;
+    padding:24px 28px; width:300px; text-align:center;
+    box-shadow:0 8px 32px rgba(0,0,0,0.25);
+  }
+  #confirm-box h3 { font-family:'Luckiest Guy',cursive; font-size:20px; color:#c0392b; margin-bottom:10px; }
+  #confirm-box p  { font-size:14px; color:#555; margin-bottom:18px; line-height:1.5; }
+  #confirm-box .btn-row { display:flex; gap:10px; }
+  #confirm-box .btn-row .btn { flex:1; }
+
+  /* ── SAVE TOAST ── */
+  #save-toast {
+    position:absolute; bottom:100px; left:50%;
+    transform:translateX(-50%);
+    background:rgba(44,62,80,0.85); color:#fff;
+    font-size:12px; font-weight:700;
+    padding:6px 16px; border-radius:20px;
+    pointer-events:none; opacity:0;
+    transition:opacity .3s;
+    white-space:nowrap;
+  }
+  #save-toast.show { opacity:1; }
+
+  /* ── CHARACTER / WARDROBE PANEL ── */
+  #char-panel { top:60px; right:14px; width:260px; max-height:80vh; overflow-y:auto; }
+
+  /* ── CHARACTER PREVIEW ── */
+  #char-preview-wrap {
+    background: linear-gradient(160deg, #c8e8f5 0%, #a8d8ea 50%, #5db8d8 100%);
+    border-radius: 14px;
+    margin-bottom: 12px;
+    position: relative;
+    overflow: hidden;
+    height: 160px;
+    display: flex;
+    align-items: center;
+    /* Slight left-bias: preview avatar sits left-of-centre, mirroring
+       the fishing character on the left of the game world               */
+    justify-content: flex-start;
+    padding-left: 8px;
+  }
+  #char-preview-canvas { display:block; }
+
+  /* Equipment slots grid around preview */
+  #equip-grid {
+    display: grid;
+    grid-template-columns: 44px 1fr 44px;
+    grid-template-rows: repeat(3, 44px);
+    gap: 6px;
+    align-items: center;
+    justify-items: center;
+    margin-bottom: 14px;
+  }
+  .equip-slot {
+    width: 44px; height: 44px;
+    background: rgba(255,255,255,0.7);
+    border-radius: 10px;
+    border: 2px solid rgba(0,0,0,0.08);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    cursor: pointer; transition: all .12s;
+    font-size: 10px; color: #999; font-weight: 700;
+    text-align: center; line-height: 1.2;
+    position: relative;
+  }
+  .equip-slot:hover   { border-color: rgba(74,155,190,.5); background:rgba(74,155,190,.12); }
+  .equip-slot.filled  { border-color: rgba(92,184,92,.5);  background:rgba(92,184,92,.08); }
+  .equip-slot .es-icon { font-size: 18px; line-height:1; }
+  .equip-slot .es-label{ font-size: 9px; color:#aaa; margin-top:1px; }
+  .equip-slot .es-name { font-size: 9px; color:#5cb85c; font-weight:800; margin-top:1px; max-width:40px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .equip-slot .es-unequip {
+    position:absolute; top:-4px; right:-4px;
+    background:#e05c5c; color:#fff; border-radius:50%;
+    width:14px; height:14px; font-size:9px; line-height:14px;
+    text-align:center; display:none; cursor:pointer; font-weight:800;
+  }
+  .equip-slot.filled .es-unequip { display:block; }
+  #equip-preview-center {
+    grid-column: 2; grid-row: 1 / 4;
+    width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  /* Wardrobe owned items grid */
+  .wardrobe-section { margin-bottom:14px; }
+  .wardrobe-section h3 {
+    font-family:'Luckiest Guy',cursive; font-size:13px; color:#888;
+    letter-spacing:1px; margin-bottom:7px;
+    border-bottom:1px solid rgba(0,0,0,.08); padding-bottom:3px;
+  }
+  .wardrobe-grid { display:flex; flex-wrap:wrap; gap:6px; }
+  .wardrobe-item {
+    background:rgba(0,0,0,.05); border-radius:10px;
+    padding:7px 10px; cursor:pointer; font-size:13px; font-weight:700;
+    border:2px solid transparent; transition:all .12s; min-width:70px; text-align:center;
+  }
+  .wardrobe-item:hover  { background:rgba(74,155,190,.15); border-color:rgba(74,155,190,.4); }
+  .wardrobe-item.active { background:rgba(92,184,92,.15);  border-color:rgba(92,184,92,.6); }
+  .wardrobe-item .wi-icon { font-size:18px; display:block; margin-bottom:2px; }
+  .wardrobe-item .wi-name { font-size:10px; color:#666; }
+
+  /* ── CHARACTER TOGGLE ── */
+  #char-toggle {
+    display: flex; gap: 6px; margin-bottom: 12px;
+  }
+  #char-toggle button {
+    flex: 1; padding: 7px 0; font-size: 13px; font-weight: 800;
+    border: 2px solid transparent; border-radius: 10px; cursor: pointer;
+    font-family: 'Nunito', sans-serif;
+    background: rgba(0,0,0,.06); color: var(--text);
+    transition: all .12s;
+  }
+  #char-toggle button.active {
+    background: rgba(92,184,92,.15); border-color: rgba(92,184,92,.6); color: var(--text);
+  }
+  #inv-panel::-webkit-scrollbar,
+  #journal-panel::-webkit-scrollbar,
+  #shop-panel::-webkit-scrollbar,
+  #char-panel::-webkit-scrollbar,
+  #goals-panel::-webkit-scrollbar { width:5px; }
+  #inv-panel::-webkit-scrollbar-thumb,
+  #journal-panel::-webkit-scrollbar-thumb,
+  #shop-panel::-webkit-scrollbar-thumb,
+  #char-panel::-webkit-scrollbar-thumb,
+  #goals-panel::-webkit-scrollbar-thumb { background:rgba(0,0,0,.13); border-radius:3px; }
+
+  /* ── MOBILE BAR (hidden on desktop) ── */
+  #mobile-bar { display:none; }
+
+  /* ── MOBILE LAYOUT (portrait ≤600px wide, or landscape ≤600px tall) ── */
+  @media (max-width: 600px), (max-height: 500px) {
+
+    /* Hide the floating desktop HUD and nav */
+    #hud      { display:none !important; }
+    #top-btns { display:none !important; }
+
+    /* Mobile bar: floating overlay — no background, buttons sit over the sky */
+    #mobile-bar {
+      display: flex; flex-direction: column;
+      position: absolute;          /* removed from flex flow — canvas fills full screen */
+      top: 0; left: 0; right: 0;
+      width: 100%;
+      background: transparent;     /* no bar, no box, no white rectangle */
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+      box-shadow: none;
+      z-index: 50;
+      pointer-events: none;        /* let canvas touches pass through the empty area */
+    }
+
+    /* Row 1 — nav buttons: re-enable pointer events (bar is pointer-events:none) */
+    #mobile-nav {
+      display:flex; flex-wrap:nowrap;
+      gap:4px; padding:6px 8px;
+      overflow-x:auto;
+      -webkit-overflow-scrolling:touch;
+      pointer-events: all;
+    }
+    /* Tighten buttons for mobile — drop-shadow for legibility over sky */
+    .mb-btn {
+      padding:7px 9px !important;
+      font-size:11px !important;
+      border-radius:10px !important;
+      white-space:nowrap;
+      flex-shrink:0;
+      box-shadow: 0 3px 0 rgba(0,0,0,.22), 0 1px 6px rgba(0,0,0,.18) !important;
+    }
+
+    /* Row 2 — status info */
+    #mobile-status {
+      display:flex; flex-wrap:wrap; align-items:center;
+      gap:6px; padding:4px 8px 6px;
+      border-top: none;
+      pointer-events: all;
+    }
+    /* Mobile status hud-box: strip container look inherited from .hud-box */
+    #mobile-status .hud-box {
+      background: none !important;
+      backdrop-filter: none !important;
+      -webkit-backdrop-filter: none !important;
+      border-radius: 0 !important;
+      padding: 0 !important;
+      box-shadow: none !important;
+      font-size:13px;
+    }
+    #m-coins-display {
+      font-size:14px; font-weight:800; color:var(--text);
+      background: none;
+      backdrop-filter: none; -webkit-backdrop-filter: none;
+      border-radius: 0; padding: 0;
+      box-shadow: none;
+      text-shadow: 0 1px 4px rgba(255,255,255,0.65), 0 1px 3px rgba(0,0,0,0.15);
+    }
+    #m-stats-display {
+      font-size:11px; font-weight:700; color:var(--text);
+      display:none; gap:8px;
+      background: none;
+      backdrop-filter: none; -webkit-backdrop-filter: none;
+      border-radius: 0; padding: 0;
+      box-shadow: none;
+    }
+    #m-stats-display.has-stats { display:flex; }
+    #m-stats-display span { white-space:nowrap; }
+    #m-bait-display {
+      font-size:12px; font-weight:800; color:var(--text);
+      background: none;
+      backdrop-filter: none; -webkit-backdrop-filter: none;
+      border-radius: 0; padding: 0;
+      box-shadow: none;
+    }
+
+    /* Bar at top, canvas fills remaining height below */
+    #game-wrapper {
+      height: 100vh;  /* fallback */
+      height: 100svh; /* small viewport — never includes browser bar */
+      height: 100dvh; /* dynamic — best on modern mobile */
+      flex-direction:column;
+    }
+    /* mobile-bar is now position:absolute — no longer in flex flow */
+    #gameCanvas {
+      order: 1;
+      width:  100%;
+      height: auto;
+      aspect-ratio: 800 / 520;
+      max-height: 100%;
+      flex-shrink: 1;
+      min-height: 0;
+    }
+
+    /* Panels open below the bar — shift their top anchor down */
+    .panel {
+      top:auto !important;
+      z-index: 20 !important;   /* below mobile-bar (50), above canvas */
+      /* max-height keeps panels from running off the bottom of the screen */
+      max-height: calc(100svh - var(--mobile-bar-height) - 16px) !important;
+    }
+    /* Most panels: full-width below the bar */
+    #inv-panel, #journal-panel, #shop-panel, #goals-panel {
+      top:   calc(var(--mobile-bar-height) + 8px) !important;
+      left:  4px !important;
+      right: 4px !important;
+      width: auto !important;
+    }
+
+    /* Gear panel: right-anchored so game world stays visible */
+    #char-panel {
+      top:        calc(var(--mobile-bar-height) + 12px) !important;
+      right:      6px !important;
+      left:       auto !important;
+      width:      min(290px, calc(100vw - 10px)) !important;
+      max-height: calc(100svh - var(--mobile-bar-height) - var(--cast-button-space)) !important;
+      overflow-y: auto !important;
+      padding-bottom: 28px !important;   /* clear breathing room above CAST btn */
+    }
+
+    /* ── Catch dialog (mobile base) ──────────────────────────────────────────
+       Hidden by default. pointer-events:none prevents blocking touches.   */
+    #catch-popup {
+      position: fixed !important;
+      left:  50% !important;
+      right: auto !important;
+      transform: translateX(-50%) scale(.8) !important;
+      width: 290px !important;
+      z-index: 200 !important;
+      pointer-events: none !important;
+    }
+    #catch-popup.active {
+      display: block !important;
+      transform: translateX(-50%) scale(1) !important;
+      opacity: 1 !important;
+      pointer-events: all !important;
+    }
+
+    /* ── Portrait: content-sized, centred below the bar ─────────────────── */
+    @media (orientation: portrait) {
+      #catch-popup {
+        top: 50% !important;
+        bottom: auto !important;
+        /* shift centre point down by half the bar height so it centres
+           in the playable area, not the full screen */
+        transform: translateX(-50%) translateY(calc(-50% + 56px)) scale(.8) !important;
+      }
+      #catch-popup.active {
+        transform: translateX(-50%) translateY(calc(-50% + 56px)) scale(1) !important;
+      }
+    }
+
+    /* ── Portrait: cover-fill height, left-anchor for fisherman, no blue below ── */
+    @media (orientation: portrait) {
+      #game-wrapper {
+        overflow: hidden;
+      }
+      #gameCanvas {
+        width: auto !important;
+        height: 100% !important;
+        min-width: 100% !important;
+        max-height: none !important;
+        aspect-ratio: 800 / 520 !important;
+        flex-shrink: 1 !important;
+        flex-grow: 1 !important;
+        /* Left-align so fisherman at x=25% stays in frame */
+        align-self: stretch !important;
+        object-position: left center;
+        transform-origin: left center;
+      }
+
+      /* Portrait: narrower, height capped well clear of CAST button */
+      #char-panel {
+        width:      min(260px, calc(100vw - 10px)) !important;
+        max-height: calc(100svh - var(--mobile-bar-height) - var(--cast-button-space)) !important;
+      }
+    }
+
+    /* ── Landscape: compact right-anchored panel ─────────────────────────── */
+    @media (orientation: landscape) {
+      #catch-popup {
+        top:        80px !important;
+        bottom:     6px  !important;
+        max-height: calc(100svh - 86px) !important;
+        overflow-y: auto !important;
+        padding: 10px 14px !important;
+      }
+      #catch-popup .fish-emoji { font-size: 36px !important; margin: 2px 0 !important; }
+      #catch-popup .fish-name  { font-size: 17px !important; }
+      #catch-popup .fish-sub,
+      #catch-popup .fish-worth { font-size: 12px !important; margin: 2px 0 5px !important; }
+
+      /* ── Gear panel: right-anchored, narrow, clear of CAST button ───────
+         230px wide — balanced against ~300px+ panel height in landscape    */
+      #char-panel {
+        top:    calc(var(--mobile-bar-height) + 10px) !important;
+        right:  8px !important;
+        left:   auto !important;
+        width:  min(230px, 38vw) !important;
+        max-height: calc(100svh - var(--mobile-bar-height) - var(--cast-button-space)) !important;
+        overflow-y: auto !important;
+        padding: 8px 10px 28px !important;  /* tighter top, clear breathing room bottom */
+        z-index: 20 !important;
+      }
+
+      /* Panel heading */
+      #char-panel h2 { font-size: 13px !important; margin-bottom: 4px !important; }
+
+      /* Toggle buttons: compact */
+      #char-toggle { margin-bottom: 5px !important; gap: 4px !important; }
+      #char-toggle button { padding: 4px 0 !important; font-size: 10px !important; }
+
+      /* Equip grid: 3×30px rows, tighter gaps */
+      #equip-grid {
+        grid-template-rows: repeat(3, 30px) !important;
+        gap: 3px !important;
+        margin-bottom: 6px !important;
+      }
+
+      /* Equip slots */
+      .equip-slot {
+        width:  30px !important;
+        height: 30px !important;
+        border-radius: 7px !important;
+      }
+      .equip-slot .es-icon  { font-size: 12px !important; }
+      .equip-slot .es-label { font-size: 7px  !important; }
+      .equip-slot .es-name  { font-size: 7px  !important; max-width: 26px !important; }
+      .equip-slot .es-unequip {
+        width: 11px !important; height: 11px !important;
+        font-size: 7px !important; line-height: 11px !important;
+      }
+
+      /* Preview canvas: 3×30px + 2×3px gaps = 96px tall */
+      #char-preview-canvas {
+        width:  70px !important;
+        height: 96px !important;
+      }
+
+      /* Preview wrap: match canvas, left-biased, no extra height */
+      #char-preview-wrap {
+        height: 96px !important;
+        margin-bottom: 6px !important;
+        padding-left: 4px !important;
+        justify-content: flex-start !important;
+      }
+
+      /* Rod slot below grid */
+      #char-panel > div[style*="margin-bottom:10px"],
+      #char-panel > div[style*="margin-bottom: 10px"] {
+        margin-bottom: 5px !important;
+      }
+
+      /* Wardrobe: tighter throughout */
+      .wardrobe-section   { margin-bottom: 6px !important; }
+      .wardrobe-section h3 {
+        font-size: 10px !important;
+        margin-bottom: 4px !important;
+        padding-bottom: 2px !important;
+      }
+      .wardrobe-grid { gap: 4px !important; }
+      .wardrobe-item {
+        padding: 4px 6px !important;
+        min-width: 48px !important;
+        border-radius: 8px !important;
+      }
+      .wardrobe-item .wi-icon { font-size: 13px !important; margin-bottom: 1px !important; }
+      .wardrobe-item .wi-name { font-size: 8px  !important; }
+
+      /* ── Landscape HUD: move fishing controls to right side ─────────────
+         Keeps fish/bobber/line area (left-centre) clear for gameplay.
+         Right-side placement also suits right-thumb use on phones.         */
+
+      /* Button: right-anchored, vertically near bottom-right */
+      #cast-btn {
+        left:   auto !important;
+        right:  16px !important;
+        bottom: 18px !important;
+        transform: none !important;
+      }
+      #reel-btn {
+        left:   auto !important;
+        right:  16px !important;
+        bottom: 18px !important;
+        transform: none !important;
+      }
+
+      /* Power bar: stacked above button on the right */
+      #power-wrap {
+        left:   auto !important;
+        right:  16px !important;
+        bottom: 74px !important;
+        transform: none !important;
+        text-align: right !important;
+        width: 180px !important;
+      }
+
+      /* Reel panel: stacked above button on the right, text left-aligned */
+      #reel-panel {
+        left:   auto !important;
+        right:  16px !important;
+        bottom: 70px !important;
+        transform: none !important;
+        text-align: left !important;
+        width: min(260px, 40vw) !important;
+      }
+    }
+
+    /* ── Mobile fishing HUD — compact layout, no overlap ────────────────────
+       Desktop uses fixed bottom offsets that stack fine on a tall canvas.
+       On mobile the canvas is shorter, so we raise everything and shrink
+       the button so bars + helper text stay fully above it.               */
+
+    /* Action button: smaller so it takes less vertical space */
+    #cast-btn {
+      font-size:   15px !important;
+      padding:     10px 32px !important;
+      border-radius: 40px !important;
+      bottom:      22px !important;
+    }
+    #reel-btn {
+      font-size:   14px !important;
+      padding:     10px 28px !important;
+      border-radius: 40px !important;
+      bottom:      22px !important;
+    }
+
+    /* Power bar: raised to sit clearly above the button
+       Button height ~44px + bottom 22px = ~66px, add 14px gap → 80px    */
+    #power-wrap {
+      bottom: 80px !important;
+      width:  180px !important;
+    }
+
+    /* Reel panel: raised so helper text clears the button top
+       Button ~44px + bottom 22px = ~66px, add 18px gap → 84px           */
+    #reel-panel {
+      bottom: 84px !important;
+      width:  min(320px, 92vw) !important;
+    }
+
+    /* Helper text: slightly smaller + a bit more top margin so it breathes */
+    #reel-hint {
+      font-size:  12px !important;
+      margin-top:  6px !important;
+    }
+
+    /* Fish/tension label: slightly tighter */
+    #fish-caught-name { font-size: 13px !important; }
+    #reel-panel label { font-size: 13px !important; }
+
+    /* ── Very short landscape (e.g. phones rotated) — extra height reduction ── */
+    @media (orientation: landscape) and (max-height: 500px) {
+      #char-panel {
+        width:      min(220px, 38vw) !important;  /* narrower for compact proportion */
+        right:      8px !important;
+        max-height: calc(100svh - var(--mobile-bar-height) - 100px) !important;
+        padding: 6px 10px 20px !important;  /* breathing room above CAST btn */
+      }
+      /* Slightly reduce internal spacing so more content fits without scrolling */
+      #char-panel h2          { margin-bottom: 3px !important; }
+      #char-toggle             { margin-bottom: 4px !important; }
+      .wardrobe-section        { margin-bottom: 5px !important; }
+
+      /* Short landscape: fishing HUD compact and right-anchored */
+      #cast-btn, #reel-btn {
+        font-size: 13px !important;
+        padding:   8px 22px !important;
+        left:   auto !important;
+        right:  12px !important;
+        bottom: 12px !important;
+        transform: none !important;
+      }
+      #power-wrap {
+        left:   auto !important;
+        right:  12px !important;
+        bottom: 60px !important;
+        transform: none !important;
+        text-align: right !important;
+        width:  160px !important;
+      }
+      #reel-panel {
+        left:   auto !important;
+        right:  12px !important;
+        bottom: 56px !important;
+        transform: none !important;
+        text-align: left !important;
+        width:  min(240px, 42vw) !important;
+      }
+      #reel-hint        { font-size: 11px !important; margin-top: 4px !important; }
+      #fish-caught-name  { font-size: 12px !important; }
+      #reel-panel label  { font-size: 12px !important; }
+      #tension-bg        { height: 18px !important; margin: 4px 0 !important; }
+    }
+  }
